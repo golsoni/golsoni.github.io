@@ -67,3 +67,24 @@ body {
 #sidebar .nav-link[href$="/tags"] {
   display: none !important;
 }
+
+/* ===== 首页卡片封面：竖图自动裁中间 ===== */
+#post-list .post-preview > .col-md-5 {
+  overflow: hidden;
+  display: flex;
+}
+
+#post-list .post-preview > .col-md-5 img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+}
+
+/* 手机上（卡片变上下排布时）固定高度，避免竖图拉很长 */
+@media (max-width: 767.98px) {
+  #post-list .post-preview > .col-md-5 img {
+    height: 220px;
+  }
+}
