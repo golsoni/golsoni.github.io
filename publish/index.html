@@ -31,7 +31,7 @@
   .block{ border:1px dashed var(--line); border-radius:10px; padding:12px; margin-top:12px; }
   .block-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
   .tag{ font-size:12px; color:var(--dim); }
-  .thumb{ max-width:100%; border-radius:8px; display:block; margin-bottom:8px; }
+  .thumb{ max-width:100%; max-height:320px; border-radius:8px; display:block; margin-bottom:8px; }
   .two{ display:flex; gap:10px; }
   .two > div{ flex:1; }
   .ok{ color:#1a9c53; font-size:13px; }
@@ -67,6 +67,18 @@
 
   <section class="card">
     <div class="row" style="justify-content:space-between">
+      <strong>封面图（可选）</strong>
+      <span class="row">
+        <button id="pickCover" type="button">选择封面</button>
+        <button id="clearCover" type="button" class="ghost">移除</button>
+      </span>
+    </div>
+    <p class="hint mini" style="margin:8px 0 0">有封面的文章，首页会显示成「左图右文」的卡片。建议用横图（1200×630 左右）。</p>
+    <div id="coverBox" style="margin-top:10px"></div>
+  </section>
+
+  <section class="card">
+    <div class="row" style="justify-content:space-between">
       <strong>内容</strong>
       <span class="row">
         <button id="addText" type="button">＋ 文字</button>
@@ -87,6 +99,7 @@
   </div>
 
   <input id="picker" type="file" accept="image/*" multiple hidden>
+  <input id="coverPicker" type="file" accept="image/*" hidden>
 </div>
 
 <script>
@@ -101,6 +114,7 @@
   var $ = function (id) { return document.getElementById(id); };
   var token = localStorage.getItem('gh_token') || '';
   var blocks = [];
+  var cover = { file: null, dataUrl: '', loading: false, note: '', err: '', url: '' };
 
   /* ---------- 令牌 ---------- */
   function paintToken() {
@@ -126,7 +140,6 @@
     paintToken();
   };
 
-  /* 记住压缩开关 */
   if (localStorage.getItem('auto_compress') === '0') $('autoCompress').checked = false;
   $('autoCompress').onchange = function () {
     localStorage.setItem('auto_compress', $('autoCompress').checked ? '1' : '0');
@@ -158,9 +171,8 @@
   }
 
   /* ---------- 图片压缩 ---------- */
-  function mb(n) { return (n / 1024 / 1024).toFixed(n < 1024 * 1024 ? 1 : 1) + 'MB'; }
   function kb(n) { return Math.round(n / 1024) + 'KB'; }
-  function human(n) { return n >= 1024 * 1024 ? mb(n) : kb(n); }
+  function human(n) { return n >= 1024 * 1024 ? (n / 1024 / 1024).toFixed(1) + 'MB' : kb(n); }
 
   function loadImage(file) {
     return new Promise(function (resolve, reject) {
@@ -185,7 +197,7 @@
 
   function compressImage(file) {
     if (!/^image\/(jpeg|png|webp)$/.test(file.type || '')) {
-      return Promise.resolve({ file: file, from: file.size, to: file.size, skipped: true });
+      return Promise.resolve({ file: file, from: file.size, to: file.size });
     }
     return loadImage(file).then(function (src) {
       var w = src.width, h = src.height;
@@ -210,11 +222,7 @@
             return;
           }
           var name = String(file.name || 'photo').replace(/\.[^.]+$/, '') + '.jpg';
-          resolve({
-            file: new File([blob], name, { type: 'image/jpeg' }),
-            from: file.size,
-            to: blob.size
-          });
+          resolve({ file: new File([blob], name, { type: 'image/jpeg' }), from: file.size, to: blob.size });
         }, 'image/jpeg', QUALITY);
       });
     });
@@ -229,6 +237,85 @@
     });
   }
 
+  function processFile(f) {
+    if (!f || !/^image\//.test(f.type || '')) return Promise.reject(new Error('format'));
+    var task = $('autoCompress').checked
+      ? compressImage(f)
+      : Promise.resolve({ file: f, from: f.size, to: f.size });
+    return task.then(function (res) {
+      return readDataUrl(res.file).then(function (d) {
+        return { file: res.file, dataUrl: d, from: res.from, to: res.to };
+      });
+    });
+  }
+
+  /* ---------- 封面 ---------- */
+  function renderCover() {
+    var box = $('coverBox');
+    box.innerHTML = '';
+    if (cover.err) {
+      var pe = document.createElement('p');
+      pe.className = 'err mini';
+      pe.textContent = cover.err;
+      box.appendChild(pe);
+      return;
+    }
+    if (cover.loading) {
+      var pw = document.createElement('p');
+      pw.className = 'hint mini';
+      pw.textContent = '处理中…';
+      box.appendChild(pw);
+      return;
+    }
+    if (!cover.dataUrl) {
+      var pn = document.createElement('p');
+      pn.className = 'hint mini';
+      pn.textContent = '还没有选择封面。没有封面也能正常发布。';
+      box.appendChild(pn);
+      return;
+    }
+    var img = document.createElement('img');
+    img.className = 'thumb';
+    img.src = cover.dataUrl;
+    box.appendChild(img);
+    if (cover.note) {
+      var p2 = document.createElement('p');
+      p2.className = 'hint mini';
+      p2.style.margin = '0';
+      p2.textContent = cover.note;
+      box.appendChild(p2);
+    }
+  }
+
+  $('pickCover').onclick = function () { $('coverPicker').click(); };
+  $('coverPicker').onchange = function () {
+    var f = $('coverPicker').files && $('coverPicker').files[0];
+    $('coverPicker').value = '';
+    if (!f) return;
+    cover.err = '';
+    cover.loading = true;
+    renderCover();
+    processFile(f)
+      .then(function (res) {
+        cover.file = res.file;
+        cover.dataUrl = res.dataUrl;
+        cover.note = res.to < res.from
+          ? '已压缩 ' + human(res.from) + ' → ' + human(res.to)
+          : '保持原图 ' + human(res.to);
+        cover.loading = false;
+        renderCover();
+      })
+      .catch(function () {
+        cover.loading = false;
+        cover.err = '这张图读不出来，可能是 HEIC/HEIF 格式。请导出成 JPG 再试。';
+        renderCover();
+      });
+  };
+  $('clearCover').onclick = function () {
+    cover = { file: null, dataUrl: '', loading: false, note: '', err: '', url: '' };
+    renderCover();
+  };
+
   /* ---------- 内容块 ---------- */
   function addText(value) {
     blocks.push({ type: 'text', value: value || '' });
@@ -239,29 +326,20 @@
     if (!f || !/^image\//.test(f.type || '')) return;
     if (f.size > 20 * 1024 * 1024) { alert('「' + (f.name || '图片') + '」超过 20MB，请先自己压缩一下。'); return; }
 
-    var b = {
-      type: 'image', file: f, dataUrl: '', caption: '', width: '',
-      loading: true, note: '', err: ''
-    };
+    var b = { type: 'image', file: f, dataUrl: '', caption: '', width: '', loading: true, note: '', err: '' };
     blocks.push(b);
     render();
 
-    var task = $('autoCompress').checked
-      ? compressImage(f)
-      : Promise.resolve({ file: f, from: f.size, to: f.size });
-
-    task
+    processFile(f)
       .then(function (res) {
         b.file = res.file;
-        return readDataUrl(res.file).then(function (d) {
-          b.dataUrl = d;
-          b.loading = false;
-          b.note = res.to < res.from
-            ? '已压缩 ' + human(res.from) + ' → ' + human(res.to)
-            : '保持原图 ' + human(res.to);
-          b.err = '';
-          render();
-        });
+        b.dataUrl = res.dataUrl;
+        b.loading = false;
+        b.note = res.to < res.from
+          ? '已压缩 ' + human(res.from) + ' → ' + human(res.to)
+          : '保持原图 ' + human(res.to);
+        b.err = '';
+        render();
       })
       .catch(function () {
         b.loading = false;
@@ -280,7 +358,6 @@
     $('picker').value = '';
   };
 
-  /* 粘贴图片 */
   document.addEventListener('paste', function (e) {
     var dt = e.clipboardData;
     if (!dt) return;
@@ -295,7 +372,6 @@
     if (got) e.preventDefault();
   });
 
-  /* 拖拽图片 */
   document.body.addEventListener('dragover', function (e) {
     if (e.dataTransfer && e.dataTransfer.types && e.dataTransfer.types.indexOf('Files') >= 0) {
       e.preventDefault();
@@ -483,19 +559,22 @@
     if (!hasText && imgs.length === 0) { setStatus('内容还是空的，先加点文字或图片。', 'err'); return; }
     if (imgs.some(function (b) { return b.err; })) { setStatus('有一张图片读不出来，先删掉或换一张。', 'err'); return; }
     if (imgs.some(function (b) { return !b.dataUrl; })) { setStatus('有图片还在处理，稍等两秒再点发布。', 'err'); return; }
+    if (cover.loading) { setStatus('封面还在处理，稍等一下。', 'err'); return; }
+    if (cover.err) { setStatus('封面图读不出来，先移除或换一张。', 'err'); return; }
 
     var now = bjNow();
-    var total = imgs.length;
+    var total = imgs.length + (cover.file ? 1 : 0);
     var busy = 0;
 
     $('publish').disabled = true;
     setStatus('准备中…', '');
 
     var chain = Promise.resolve();
+
     imgs.forEach(function (b, idx) {
       chain = chain.then(function () {
         busy++;
-        if (total) setStatus('上传图片 ' + busy + '/' + total + '…', '');
+        setStatus('上传图片 ' + busy + '/' + total + '…', '');
         var b64 = b.dataUrl.split(',')[1];
         var name = now.ymd + '-' + now.stamp + '-' + (idx + 1) + '.' + extOf(b.file && b.file.type, b.file && b.file.name);
         b.url = '/assets/img/' + name;
@@ -505,6 +584,20 @@
         });
       });
     });
+
+    if (cover.file) {
+      chain = chain.then(function () {
+        busy++;
+        setStatus('上传封面 ' + busy + '/' + total + '…', '');
+        var b64 = cover.dataUrl.split(',')[1];
+        var name = now.ymd + '-' + now.stamp + '-cover.' + extOf(cover.file.type, cover.file.name);
+        cover.url = '/assets/img/' + name;
+        return api('/repos/' + OWNER + '/' + REPO + '/contents/assets/img/' + name, {
+          method: 'PUT',
+          body: { message: '上传封面 ' + name, content: b64, branch: BRANCH }
+        });
+      });
+    }
 
     chain
       .then(function () {
@@ -527,14 +620,19 @@
           }
         });
 
-        var content =
-          '---\n' +
+        var fm = '---\n' +
           'title: ' + JSON.stringify(title) + '\n' +
           'date: ' + now.ymd + ' ' + now.hms + ' +0800\n' +
           'categories: [' + JSON.stringify(cat) + ']\n' +
-          'slug: ' + slug + '\n' +
-          '---\n\n' +
-          body;
+          'slug: ' + slug + '\n';
+
+        if (cover.url) {
+          fm += 'image:\n' +
+                '  path: ' + cover.url + '\n' +
+                '  alt: ' + JSON.stringify(title) + '\n';
+        }
+
+        var content = fm + '---\n\n' + body;
 
         return api('/repos/' + OWNER + '/' + REPO + '/contents/_posts/' + now.ymd + '-' + now.stamp + '.md', {
           method: 'PUT',
@@ -547,7 +645,9 @@
           SITE + '/posts/' + slug + '/</a>', 'ok');
         $('title').value = '';
         blocks = [];
+        cover = { file: null, dataUrl: '', loading: false, note: '', err: '', url: '' };
         render();
+        renderCover();
         addText('');
       })
       .catch(function (e) {
@@ -559,6 +659,7 @@
   /* ---------- 启动 ---------- */
   paintToken();
   loadCategories();
+  renderCover();
   addText('');
 })();
 </script>
