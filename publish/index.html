@@ -13,7 +13,7 @@
   *{ box-sizing:border-box; }
   body{ margin:0; background:var(--bg); color:var(--text);
         font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; }
-  .wrap{ max-width:760px; margin:0 auto; padding:20px 16px 80px; }
+  .wrap{ max-width:760px; margin:0 auto; padding:20px 16px 100px; }
   h1{ font-size:20px; margin:8px 0 4px; }
   .hint{ color:var(--dim); font-size:13px; margin:0 0 18px; }
   .card{ background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:14px; }
@@ -38,7 +38,7 @@
   .ok{ color:#1a9c53; font-size:13px; }
   .err{ color:#d33; font-size:13px; white-space:pre-wrap; }
   .mini{ font-size:12px; }
-  .linkbox input{ font-size:12px; }
+  .drop{ outline:3px dashed var(--brand); outline-offset:-6px; }
 </style>
 </head>
 <body>
@@ -49,9 +49,9 @@
   <section class="card">
     <label>GitHub 令牌（只保存在这台浏览器）</label>
     <div class="row">
-      <input id="token" type="password" class="linkbox" placeholder="github_pat_..." style="flex:1;min-width:200px">
-      <button id="saveToken">保存</button>
-      <button id="clearToken" class="ghost">清除</button>
+      <input id="token" type="password" placeholder="github_pat_..." style="flex:1;min-width:200px">
+      <button id="saveToken" type="button">保存</button>
+      <button id="clearToken" type="button" class="ghost">清除</button>
     </div>
     <div id="tokenState" class="ok mini" style="margin-top:6px"></div>
   </section>
@@ -68,18 +68,20 @@
     <div class="row" style="justify-content:space-between">
       <strong>内容</strong>
       <span class="row">
-        <button id="addText">＋ 文字</button>
-        <button id="addImage">＋ 图片</button>
+        <button id="addText" type="button">＋ 文字</button>
+        <button id="addImage" type="button">＋ 图片</button>
       </span>
     </div>
+    <p class="hint mini" style="margin:8px 0 0">图片也可以直接<b>拖进本页</b>，或截图后按 <b>Ctrl+V</b> 粘贴。</p>
     <div id="blocks"></div>
-    <p class="hint mini" style="margin:10px 0 0">按添加顺序排版：文字段和图片可以交替，用 ↑ ↓ 调整顺序。</p>
   </section>
 
   <div class="row">
-    <button id="publish" class="primary">发布</button>
+    <button id="publish" class="primary" type="button">发布</button>
     <span id="status"></span>
   </div>
+
+  <input id="picker" type="file" accept="image/*" multiple hidden>
 </div>
 
 <script>
@@ -95,16 +97,18 @@
 
   /* ---------- 令牌 ---------- */
   function paintToken() {
+    var s = $('tokenState');
     if (token) {
-      $('tokenState').textContent = '✅ 已保存令牌（结尾 ' + token.slice(-4) + '）';
-      $('tokenState').className = 'ok mini';
+      s.textContent = '✅ 已保存令牌（结尾 ' + token.slice(-4) + '）';
+      s.className = 'ok mini';
     } else {
-      $('tokenState').textContent = '还没保存令牌，发表前必须先保存。';
-      $('tokenState').className = 'err mini';
+      s.textContent = '还没保存令牌，发表前必须先保存。';
+      s.className = 'err mini';
     }
   }
   $('saveToken').onclick = function () {
     token = $('token').value.trim();
+    if (!token) return;
     localStorage.setItem('gh_token', token);
     $('token').value = '';
     paintToken();
@@ -117,20 +121,23 @@
 
   /* ---------- 分类选项 ---------- */
   function loadCategories() {
-    var set = ['日记', '生活', '日常', '旅行', '美食', '读书', '随笔'];
+    var list = ['日记', '生活', '日常', '旅行', '美食', '读书', '随笔'];
     fetch('/categories/', { cache: 'no-store' })
       .then(function (r) { return r.ok ? r.text() : ''; })
       .then(function (html) {
         var re = /href="\/categories\/([^"\/]+)\/"/g, m;
         while ((m = re.exec(html))) {
-          try { set.push(decodeURIComponent(m[1])); } catch (e) {}
+          try { list.push(decodeURIComponent(m[1])); } catch (e) {}
         }
       })
       .catch(function () {})
       .then(function () {
         var seen = {}, html = '';
-        set.forEach(function (c) {
-          if (c && !seen[c]) { seen[c] = 1; html += '<option value="' + c.replace(/"/g, '&quot;') + '"></option>'; }
+        list.forEach(function (c) {
+          if (c && !seen[c]) {
+            seen[c] = 1;
+            html += '<option value="' + String(c).replace(/"/g, '&quot;') + '"></option>';
+          }
         });
         $('cats').innerHTML = html;
         if (!$('category').value) $('category').value = '日记';
@@ -142,10 +149,64 @@
     blocks.push({ type: 'text', value: value || '' });
     render();
   }
-  function addImage() {
-    blocks.push({ type: 'image', file: null, dataUrl: '', caption: '', width: '', url: '' });
-    render();
+
+  function addImageFromFile(f) {
+    if (!f || !/^image\//.test(f.type || '')) return;
+    if (f.size > 10 * 1024 * 1024) { alert('「' + (f.name || '图片') + '」超过 10MB，请先压缩再传。'); return; }
+    var b = { type: 'image', file: f, dataUrl: '', caption: '', width: '' };
+    var rd = new FileReader();
+    rd.onload = function () { b.dataUrl = rd.result; render(); };
+    rd.readAsDataURL(f);
+    blocks.push(b);
   }
+
+  function pickImages() { $('picker').click(); }
+
+  $('addText').onclick = function () { addText(''); };
+  $('addImage').onclick = pickImages;
+  $('picker').onchange = function () {
+    var fs = $('picker').files || [];
+    for (var i = 0; i < fs.length; i++) addImageFromFile(fs[i]);
+    $('picker').value = '';
+  };
+
+  /* 粘贴图片 */
+  document.addEventListener('paste', function (e) {
+    var dt = e.clipboardData;
+    if (!dt) return;
+    var items = dt.items || [];
+    var got = false;
+    for (var i = 0; i < items.length; i++) {
+      if (items[i].kind === 'file' && /^image\//.test(items[i].type || '')) {
+        var f = items[i].getAsFile();
+        if (f) { addImageFromFile(f); got = true; }
+      }
+    }
+    if (got) e.preventDefault();
+  });
+
+  /* 拖拽图片 */
+  var dropTarget = document.body;
+  dropTarget.addEventListener('dragover', function (e) {
+    if (e.dataTransfer && e.dataTransfer.types && e.dataTransfer.types.indexOf('Files') >= 0) {
+      e.preventDefault();
+      document.body.classList.add('drop');
+    }
+  });
+  dropTarget.addEventListener('dragleave', function () { document.body.classList.remove('drop'); });
+  dropTarget.addEventListener('drop', function (e) {
+    document.body.classList.remove('drop');
+    var fs = e.dataTransfer && e.dataTransfer.files;
+    if (!fs || !fs.length) return;
+    var has = false;
+    for (var i = 0; i < fs.length; i++) {
+      if (/^image\//.test(fs[i].type || '')) has = true;
+    }
+    if (!has) return;
+    e.preventDefault();
+    for (var j = 0; j < fs.length; j++) addImageFromFile(fs[j]);
+  });
+
   function moveBlock(b, dir) {
     var i = blocks.indexOf(b), j = i + dir;
     if (i < 0 || j < 0 || j >= blocks.length) return;
@@ -156,6 +217,14 @@
     var i = blocks.indexOf(b);
     if (i >= 0) blocks.splice(i, 1);
     render();
+  }
+  function mkBtn(text, fn, cls) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = text;
+    if (cls) b.className = cls;
+    b.onclick = fn;
+    return b;
   }
 
   function render() {
@@ -175,6 +244,7 @@
       ops.className = 'row';
       ops.appendChild(mkBtn('↑', function () { moveBlock(b, -1); }, 'mini'));
       ops.appendChild(mkBtn('↓', function () { moveBlock(b, 1); }, 'mini'));
+      ops.appendChild(mkBtn('换图', function () { pickImages(); }, 'mini'));
       ops.appendChild(mkBtn('删除', function () { removeBlock(b); }, 'mini ghost'));
       head.appendChild(tag); head.appendChild(ops);
       box.appendChild(head);
@@ -192,19 +262,10 @@
           img.src = b.dataUrl;
           box.appendChild(img);
         } else {
-          var fi = document.createElement('input');
-          fi.type = 'file';
-          fi.accept = 'image/*';
-          fi.onchange = function () {
-            var f = fi.files && fi.files[0];
-            if (!f) return;
-            if (f.size > 10 * 1024 * 1024) { alert('图片超过 10MB，请先压缩。'); return; }
-            b.file = f;
-            var rd = new FileReader();
-            rd.onload = function () { b.dataUrl = rd.result; render(); };
-            rd.readAsDataURL(f);
-          };
-          box.appendChild(fi);
+          var wait = document.createElement('p');
+          wait.className = 'hint mini';
+          wait.textContent = '图片载入中…';
+          box.appendChild(wait);
         }
 
         var two = document.createElement('div');
@@ -230,15 +291,6 @@
 
       host.appendChild(box);
     });
-  }
-
-  function mkBtn(text, fn, cls) {
-    var b = document.createElement('button');
-    b.type = 'button';
-    b.textContent = text;
-    if (cls) b.className = cls;
-    b.onclick = fn;
-    return b;
   }
 
   /* ---------- GitHub API ---------- */
@@ -271,14 +323,12 @@
   function b64encodeUtf8(str) {
     return btoa(unescape(encodeURIComponent(str)));
   }
-
   function extOf(type, name) {
     var m = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif', 'image/webp': 'webp' };
     if (m[type]) return m[type];
-    var e = (name || '').split('.').pop().toLowerCase();
+    var e = String(name || '').split('.').pop().toLowerCase();
     return /^(jpg|jpeg|png|gif|webp)$/.test(e) ? e : 'jpg';
   }
-
   function bjNow() {
     var d = new Date(Date.now() + 8 * 3600 * 1000);
     var p = function (n) { return (n < 10 ? '0' : '') + n; };
@@ -288,13 +338,11 @@
       stamp: p(d.getUTCHours()) + p(d.getUTCMinutes()) + p(d.getUTCSeconds())
     };
   }
-
   function setStatus(html, cls) {
     var s = $('status');
     s.innerHTML = html;
     s.className = cls || '';
   }
-
   function nextSlug(ymd) {
     return api('/repos/' + OWNER + '/' + REPO + '/contents/_posts?ref=' + BRANCH)
       .then(function (list) {
@@ -313,37 +361,33 @@
     if (!title) { setStatus('标题不能为空。', 'err'); return; }
 
     var hasText = blocks.some(function (b) { return b.type === 'text' && b.value.trim(); });
-    var hasImg = blocks.some(function (b) { return b.type === 'image'; });
-    if (!hasText && !hasImg) { setStatus('内容还是空的，先加点文字或图片。', 'err'); return; }
-    if (blocks.some(function (b) { return b.type === 'image' && !b.dataUrl; })) {
-      setStatus('有一张图片还没选好文件。', 'err'); return;
-    }
+    var imgs = blocks.filter(function (b) { return b.type === 'image'; });
+    if (!hasText && imgs.length === 0) { setStatus('内容还是空的，先加点文字或图片。', 'err'); return; }
+    if (imgs.some(function (b) { return !b.dataUrl; })) { setStatus('有图片还在载入，稍等一下再点发布。', 'err'); return; }
 
     var now = bjNow();
+    var total = imgs.length;
     var busy = 0;
-    var total = blocks.filter(function (b) { return b.type === 'image'; }).length;
 
     $('publish').disabled = true;
     setStatus('准备中…', '');
 
-    // 1. 逐张上传图片
-    var uploads = blocks.filter(function (b) { return b.type === 'image'; }).map(function (b, idx) {
-      return function () {
+    var chain = Promise.resolve();
+    imgs.forEach(function (b, idx) {
+      chain = chain.then(function () {
         busy++;
-        setStatus('上传图片 ' + busy + '/' + total + '…', '');
+        if (total) setStatus('上传图片 ' + busy + '/' + total + '…', '');
         var b64 = b.dataUrl.split(',')[1];
         var name = now.ymd + '-' + now.stamp + '-' + (idx + 1) + '.' + extOf(b.file && b.file.type, b.file && b.file.name);
-        var path = 'assets/img/' + name;
-        return api('/repos/' + OWNER + '/' + REPO + '/contents/' + path, {
+        b.url = '/assets/img/' + name;
+        return api('/repos/' + OWNER + '/' + REPO + '/contents/assets/img/' + name, {
           method: 'PUT',
           body: { message: '上传图片 ' + name, content: b64, branch: BRANCH }
-        }).then(function () {
-          b.url = '/assets/img/' + name;
         });
-      };
-    }).reduce(function (p, fn) { return p.then(fn); }, Promise.resolve());
+      });
+    });
 
-    uploads
+    chain
       .then(function () {
         setStatus('生成文章…', '');
         return nextSlug(now.ymd);
@@ -373,8 +417,7 @@
           '---\n\n' +
           body;
 
-        var file = '_posts/' + now.ymd + '-' + now.stamp + '.md';
-        return api('/repos/' + OWNER + '/' + REPO + '/contents/' + file, {
+        return api('/repos/' + OWNER + '/' + REPO + '/contents/_posts/' + now.ymd + '-' + now.stamp + '.md', {
           method: 'PUT',
           body: { message: '发布：' + title, content: b64encodeUtf8(content), branch: BRANCH }
         }).then(function () { return slug; });
@@ -386,6 +429,7 @@
         $('title').value = '';
         blocks = [];
         render();
+        addText('');
       })
       .catch(function (e) {
         setStatus('发布失败：' + e.message, 'err');
