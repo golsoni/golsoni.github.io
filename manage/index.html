@@ -107,14 +107,15 @@
     s.className = 'mini ' + (cls || '');
   }
 
-  function api(path, method) {
+  function api(path, method, body) {
     return fetch('https://api.github.com' + path, {
       method: method || 'GET',
       headers: {
         'Authorization': 'Bearer ' + token,
         'Accept': 'application/vnd.github+json',
         'Content-Type': 'application/json'
-      }
+      },
+      body: body ? JSON.stringify(body) : undefined
     }).then(function (res) {
       return res.text().then(function (t) {
         var data = {};
@@ -265,7 +266,11 @@
     btn.textContent = '删除中…';
     setStatus('正在删除…');
 
-    api('/repos/' + OWNER + '/' + REPO + '/contents/' + p.path, 'DELETE')
+    api('/repos/' + OWNER + '/' + REPO + '/contents/' + p.path, 'DELETE', {
+      message: '删除文章：' + p.title,
+      sha: p.sha,
+      branch: BRANCH
+    })
       .then(function () {
         setStatus('已删除，等 1～2 分钟站点更新', 'ok');
         posts = posts.filter(function (x) { return x.path !== p.path; });
