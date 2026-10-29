@@ -1,0 +1,135 @@
+name: 从 Issue 发布文章
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  contents: write
+  issues: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v7
+
+      - name: 生成文章
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const issue = context.payload.issue;
+
+            if (issue.user.login !== context.repo.owner) {
+              core.info('不是仓库主人的 Issue，跳过');
+              return;
+            }
+            if ((issue.labels || []).some((l) => l.name === 'skip')) {
+              core.info('带 skip 标签，跳过发布');
+              return;
+            }
+
+            const bj = new Date(Date.now() + 8 * 3600 * 1000);
+            const p = (n) => String(n).padStart(2, '0');
+            const ymd = `${bj.getUTCFullYear()}-${p(bj.getUTCMonth() + 1)}-${p(bj.getUTCDate())}`;
+            const hms = `${p(bj.getUTCHours())}:${p(bj.getUTCMinutes())}:00`;
+
+            const title = (issue.title || '无标题').trim();
+            const body = (issue.body || '').trim();
+
+            const sameDay = fs.existsSync('_posts')
+              ? fs.readdirSync('_posts').filter((f) => f.startsWith(ymd)).length
+              : 0;
+            const slug = sameDay === 0 ? ymd : `${ymd}-${sameDay + 1}`;
+
+            const content =
+              '---\n' +
+              `title: ${JSON.stringify(title)}\n` +
+              `date: ${ymd} ${hms} +0800\n` +
+              'categories: [日记]\n' +
+              `slug: ${slug}\n` +
+              '---\n\n' +
+              body + '\n';
+
+            const file = `_posts/${ymd}-issue-${issue.number}.md`;
+            fs.writeFileSync(file, content, 'utf8');
+            core.info(`已生成 ${file}`);
+
+      - name: 提交并推送
+        env:
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add _posts
+          if git diff --cached --quiet; then
+            echo "没有新文件，跳过提交"
+          else
+            git commit -m "发布文章（来自 issue #${ISSUE_NUMBER}）"
+            git push
+          fi
+
+      - name: 关闭 Issue
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            if (issue.user.login !== context.repo.owner) return;
+            if ((issue.labels || []).some((l) => l.name === 'skip')) return;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              body: '✅ 已发布到博客，等 1～2 分钟刷新首页即可看到。',
+            });
+            await github.rest.issues.update({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              state: 'closed',
+            });
+
+      - name: 配置 Pages
+        id: pages
+        uses: actions/configure-pages@v6
+
+      - name: 安装 Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: 3.4
+          bundler-cache: true
+
+      - name: 构建站点
+        run: bundle exec jekyll b -d "_site${{ steps.pages.outputs.base_path }}"
+        env:
+          JEKYLL_ENV: production
+
+      - name: 检查站点
+        run: |
+          bundle exec htmlproofer _site \
+            --disable-external \
+            --ignore-urls "/^http:\/\/127.0.0.1/,/^http:\/\/0.0.0.0/,/^http:\/\/localhost/"
+
+      - name: 上传产物
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: "_site${{ steps.pages.outputs.base_path }}"
+
+  deploy:
+    needs: publish
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: 部署到 GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5
