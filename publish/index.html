@@ -18,7 +18,6 @@
   .hint{ color:var(--dim); font-size:13px; margin:0 0 18px; }
   .card{ background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:14px; }
   label{ display:block; font-size:13px; color:var(--dim); margin:10px 0 4px; }
-  label:first-child{ margin-top:0; }
   input[type=text],input[type=password],input[type=number],textarea{
     width:100%; padding:9px 10px; border:1px solid var(--line); border-radius:8px;
     background:var(--bg); color:var(--text); font:inherit; }
@@ -39,6 +38,8 @@
   .err{ color:#d33; font-size:13px; white-space:pre-wrap; }
   .mini{ font-size:12px; }
   .drop{ outline:3px dashed var(--brand); outline-offset:-6px; }
+  .chk{ display:flex; align-items:center; gap:6px; font-size:13px; color:var(--dim); }
+  .chk input{ width:auto; padding:0; }
 </style>
 </head>
 <body>
@@ -72,6 +73,10 @@
         <button id="addImage" type="button">＋ 图片</button>
       </span>
     </div>
+    <div style="margin-top:10px">
+      <label class="chk"><input id="autoCompress" type="checkbox" checked>
+        上传前自动压缩（长边 1600px，画质 85%）</label>
+    </div>
     <p class="hint mini" style="margin:8px 0 0">图片也可以直接<b>拖进本页</b>，或截图后按 <b>Ctrl+V</b> 粘贴。</p>
     <div id="blocks"></div>
   </section>
@@ -90,6 +95,8 @@
   var REPO  = 'golsoni.github.io';
   var BRANCH = 'main';
   var SITE = 'https://golsoni.github.io';
+  var MAX_EDGE = 1600;
+  var QUALITY = 0.85;
 
   var $ = function (id) { return document.getElementById(id); };
   var token = localStorage.getItem('gh_token') || '';
@@ -119,6 +126,12 @@
     paintToken();
   };
 
+  /* 记住压缩开关 */
+  if (localStorage.getItem('auto_compress') === '0') $('autoCompress').checked = false;
+  $('autoCompress').onchange = function () {
+    localStorage.setItem('auto_compress', $('autoCompress').checked ? '1' : '0');
+  };
+
   /* ---------- 分类选项 ---------- */
   function loadCategories() {
     var list = ['日记', '生活', '日常', '旅行', '美食', '读书', '随笔'];
@@ -144,6 +157,78 @@
       });
   }
 
+  /* ---------- 图片压缩 ---------- */
+  function mb(n) { return (n / 1024 / 1024).toFixed(n < 1024 * 1024 ? 1 : 1) + 'MB'; }
+  function kb(n) { return Math.round(n / 1024) + 'KB'; }
+  function human(n) { return n >= 1024 * 1024 ? mb(n) : kb(n); }
+
+  function loadImage(file) {
+    return new Promise(function (resolve, reject) {
+      if (window.createImageBitmap) {
+        createImageBitmap(file, { imageOrientation: 'from-image' })
+          .then(resolve)
+          .catch(function () { viaImg(file).then(resolve).catch(reject); });
+      } else {
+        viaImg(file).then(resolve).catch(reject);
+      }
+    });
+  }
+  function viaImg(file) {
+    return new Promise(function (resolve, reject) {
+      var url = URL.createObjectURL(file);
+      var img = new Image();
+      img.onload = function () { URL.revokeObjectURL(url); resolve(img); };
+      img.onerror = function (e) { URL.revokeObjectURL(url); reject(e); };
+      img.src = url;
+    });
+  }
+
+  function compressImage(file) {
+    if (!/^image\/(jpeg|png|webp)$/.test(file.type || '')) {
+      return Promise.resolve({ file: file, from: file.size, to: file.size, skipped: true });
+    }
+    return loadImage(file).then(function (src) {
+      var w = src.width, h = src.height;
+      var scale = Math.min(1, MAX_EDGE / Math.max(w, h));
+      if (scale === 1 && file.size < 400 * 1024) {
+        return { file: file, from: file.size, to: file.size };
+      }
+      var cw = Math.max(1, Math.round(w * scale));
+      var ch = Math.max(1, Math.round(h * scale));
+      var canvas = document.createElement('canvas');
+      canvas.width = cw; canvas.height = ch;
+      var ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, cw, ch);
+      ctx.drawImage(src, 0, 0, cw, ch);
+      if (src.close) { try { src.close(); } catch (e) {} }
+
+      return new Promise(function (resolve) {
+        canvas.toBlob(function (blob) {
+          if (!blob || blob.size >= file.size) {
+            resolve({ file: file, from: file.size, to: file.size });
+            return;
+          }
+          var name = String(file.name || 'photo').replace(/\.[^.]+$/, '') + '.jpg';
+          resolve({
+            file: new File([blob], name, { type: 'image/jpeg' }),
+            from: file.size,
+            to: blob.size
+          });
+        }, 'image/jpeg', QUALITY);
+      });
+    });
+  }
+
+  function readDataUrl(file) {
+    return new Promise(function (resolve, reject) {
+      var rd = new FileReader();
+      rd.onload = function () { resolve(rd.result); };
+      rd.onerror = reject;
+      rd.readAsDataURL(file);
+    });
+  }
+
   /* ---------- 内容块 ---------- */
   function addText(value) {
     blocks.push({ type: 'text', value: value || '' });
@@ -152,12 +237,37 @@
 
   function addImageFromFile(f) {
     if (!f || !/^image\//.test(f.type || '')) return;
-    if (f.size > 10 * 1024 * 1024) { alert('「' + (f.name || '图片') + '」超过 10MB，请先压缩再传。'); return; }
-    var b = { type: 'image', file: f, dataUrl: '', caption: '', width: '' };
-    var rd = new FileReader();
-    rd.onload = function () { b.dataUrl = rd.result; render(); };
-    rd.readAsDataURL(f);
+    if (f.size > 20 * 1024 * 1024) { alert('「' + (f.name || '图片') + '」超过 20MB，请先自己压缩一下。'); return; }
+
+    var b = {
+      type: 'image', file: f, dataUrl: '', caption: '', width: '',
+      loading: true, note: '', err: ''
+    };
     blocks.push(b);
+    render();
+
+    var task = $('autoCompress').checked
+      ? compressImage(f)
+      : Promise.resolve({ file: f, from: f.size, to: f.size });
+
+    task
+      .then(function (res) {
+        b.file = res.file;
+        return readDataUrl(res.file).then(function (d) {
+          b.dataUrl = d;
+          b.loading = false;
+          b.note = res.to < res.from
+            ? '已压缩 ' + human(res.from) + ' → ' + human(res.to)
+            : '保持原图 ' + human(res.to);
+          b.err = '';
+          render();
+        });
+      })
+      .catch(function () {
+        b.loading = false;
+        b.err = '这张图读不出来，可能是 HEIC/HEIF 格式。请在相册里导出成 JPG 再传。';
+        render();
+      });
   }
 
   function pickImages() { $('picker').click(); }
@@ -186,22 +296,19 @@
   });
 
   /* 拖拽图片 */
-  var dropTarget = document.body;
-  dropTarget.addEventListener('dragover', function (e) {
+  document.body.addEventListener('dragover', function (e) {
     if (e.dataTransfer && e.dataTransfer.types && e.dataTransfer.types.indexOf('Files') >= 0) {
       e.preventDefault();
       document.body.classList.add('drop');
     }
   });
-  dropTarget.addEventListener('dragleave', function () { document.body.classList.remove('drop'); });
-  dropTarget.addEventListener('drop', function (e) {
+  document.body.addEventListener('dragleave', function () { document.body.classList.remove('drop'); });
+  document.body.addEventListener('drop', function (e) {
     document.body.classList.remove('drop');
     var fs = e.dataTransfer && e.dataTransfer.files;
     if (!fs || !fs.length) return;
     var has = false;
-    for (var i = 0; i < fs.length; i++) {
-      if (/^image\//.test(fs[i].type || '')) has = true;
-    }
+    for (var i = 0; i < fs.length; i++) if (/^image\//.test(fs[i].type || '')) has = true;
     if (!has) return;
     e.preventDefault();
     for (var j = 0; j < fs.length; j++) addImageFromFile(fs[j]);
@@ -256,16 +363,29 @@
         ta.oninput = function () { b.value = ta.value; };
         box.appendChild(ta);
       } else {
-        if (b.dataUrl) {
+        if (b.err) {
+          var pe = document.createElement('p');
+          pe.className = 'err mini';
+          pe.textContent = b.err;
+          box.appendChild(pe);
+        } else if (b.dataUrl) {
           var img = document.createElement('img');
           img.className = 'thumb';
           img.src = b.dataUrl;
           box.appendChild(img);
         } else {
-          var wait = document.createElement('p');
-          wait.className = 'hint mini';
-          wait.textContent = '图片载入中…';
-          box.appendChild(wait);
+          var pw = document.createElement('p');
+          pw.className = 'hint mini';
+          pw.textContent = '处理中…';
+          box.appendChild(pw);
+        }
+
+        if (b.note) {
+          var pn = document.createElement('p');
+          pn.className = 'hint mini';
+          pn.style.margin = '0 0 8px';
+          pn.textContent = b.note;
+          box.appendChild(pn);
         }
 
         var two = document.createElement('div');
@@ -320,9 +440,7 @@
     });
   }
 
-  function b64encodeUtf8(str) {
-    return btoa(unescape(encodeURIComponent(str)));
-  }
+  function b64encodeUtf8(str) { return btoa(unescape(encodeURIComponent(str))); }
   function extOf(type, name) {
     var m = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif', 'image/webp': 'webp' };
     if (m[type]) return m[type];
@@ -363,7 +481,8 @@
     var hasText = blocks.some(function (b) { return b.type === 'text' && b.value.trim(); });
     var imgs = blocks.filter(function (b) { return b.type === 'image'; });
     if (!hasText && imgs.length === 0) { setStatus('内容还是空的，先加点文字或图片。', 'err'); return; }
-    if (imgs.some(function (b) { return !b.dataUrl; })) { setStatus('有图片还在载入，稍等一下再点发布。', 'err'); return; }
+    if (imgs.some(function (b) { return b.err; })) { setStatus('有一张图片读不出来，先删掉或换一张。', 'err'); return; }
+    if (imgs.some(function (b) { return !b.dataUrl; })) { setStatus('有图片还在处理，稍等两秒再点发布。', 'err'); return; }
 
     var now = bjNow();
     var total = imgs.length;
@@ -398,7 +517,7 @@
           if (b.type === 'text') {
             var t = b.value.trim();
             if (t) body += t + '\n\n';
-          } else {
+          } else if (b.url) {
             var cap = (b.caption || '').trim();
             var w = (b.width || '').trim();
             var attr = w ? '{: w="' + w + '" }' : '';
