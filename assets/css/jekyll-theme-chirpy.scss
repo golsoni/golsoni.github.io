@@ -61,3 +61,8 @@ body {
   padding-left: 1em;
   opacity: 0.9;
 }
+
+/* 导航里隐藏「标签」入口（页面保留，链接不会断） */
+a.nav-link[href="/tags/"] {
+  display: none;
+}
