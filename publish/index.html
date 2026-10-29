@@ -1,0 +1,403 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>发布 · 慢慢懂得生活</title>
+<style>
+  :root{ --bg:#f7f7f8; --card:#fff; --line:#e3e3e6; --text:#1c1c1e; --dim:#6b6b70; --brand:#0a6cff; }
+  @media (prefers-color-scheme: dark){
+    :root{ --bg:#161618; --card:#1f1f22; --line:#34343a; --text:#ececef; --dim:#9a9aa2; --brand:#4c9bff; }
+  }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:var(--bg); color:var(--text);
+        font:15px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif; }
+  .wrap{ max-width:760px; margin:0 auto; padding:20px 16px 80px; }
+  h1{ font-size:20px; margin:8px 0 4px; }
+  .hint{ color:var(--dim); font-size:13px; margin:0 0 18px; }
+  .card{ background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:14px; }
+  label{ display:block; font-size:13px; color:var(--dim); margin:10px 0 4px; }
+  label:first-child{ margin-top:0; }
+  input[type=text],input[type=password],input[type=number],textarea{
+    width:100%; padding:9px 10px; border:1px solid var(--line); border-radius:8px;
+    background:var(--bg); color:var(--text); font:inherit; }
+  textarea{ min-height:110px; resize:vertical; }
+  button{ padding:8px 14px; border-radius:8px; border:1px solid var(--line);
+          background:var(--card); color:var(--text); font:inherit; cursor:pointer; }
+  button:hover{ border-color:var(--brand); }
+  button.primary{ background:var(--brand); border-color:var(--brand); color:#fff; font-weight:600; }
+  button.ghost{ color:var(--dim); }
+  .row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .block{ border:1px dashed var(--line); border-radius:10px; padding:12px; margin-top:12px; }
+  .block-head{ display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+  .tag{ font-size:12px; color:var(--dim); }
+  .thumb{ max-width:100%; border-radius:8px; display:block; margin-bottom:8px; }
+  .two{ display:flex; gap:10px; }
+  .two > div{ flex:1; }
+  .ok{ color:#1a9c53; font-size:13px; }
+  .err{ color:#d33; font-size:13px; white-space:pre-wrap; }
+  .mini{ font-size:12px; }
+  .linkbox input{ font-size:12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>发布</h1>
+  <p class="hint">这个页面直接用你的 GitHub 令牌把文章提交到仓库，不经过任何第三方。令牌只保存在本机浏览器里。</p>
+
+  <section class="card">
+    <label>GitHub 令牌（只保存在这台浏览器）</label>
+    <div class="row">
+      <input id="token" type="password" class="linkbox" placeholder="github_pat_..." style="flex:1;min-width:200px">
+      <button id="saveToken">保存</button>
+      <button id="clearToken" class="ghost">清除</button>
+    </div>
+    <div id="tokenState" class="ok mini" style="margin-top:6px"></div>
+  </section>
+
+  <section class="card">
+    <label>标题</label>
+    <input id="title" type="text" placeholder="今天的晚饭">
+    <label>分类（可从已有分类里选，也可以直接写新的）</label>
+    <input id="category" type="text" list="cats" placeholder="日记">
+    <datalist id="cats"></datalist>
+  </section>
+
+  <section class="card">
+    <div class="row" style="justify-content:space-between">
+      <strong>内容</strong>
+      <span class="row">
+        <button id="addText">＋ 文字</button>
+        <button id="addImage">＋ 图片</button>
+      </span>
+    </div>
+    <div id="blocks"></div>
+    <p class="hint mini" style="margin:10px 0 0">按添加顺序排版：文字段和图片可以交替，用 ↑ ↓ 调整顺序。</p>
+  </section>
+
+  <div class="row">
+    <button id="publish" class="primary">发布</button>
+    <span id="status"></span>
+  </div>
+</div>
+
+<script>
+(function () {
+  var OWNER = 'golsoni';
+  var REPO  = 'golsoni.github.io';
+  var BRANCH = 'main';
+  var SITE = 'https://golsoni.github.io';
+
+  var $ = function (id) { return document.getElementById(id); };
+  var token = localStorage.getItem('gh_token') || '';
+  var blocks = [];
+
+  /* ---------- 令牌 ---------- */
+  function paintToken() {
+    if (token) {
+      $('tokenState').textContent = '✅ 已保存令牌（结尾 ' + token.slice(-4) + '）';
+      $('tokenState').className = 'ok mini';
+    } else {
+      $('tokenState').textContent = '还没保存令牌，发表前必须先保存。';
+      $('tokenState').className = 'err mini';
+    }
+  }
+  $('saveToken').onclick = function () {
+    token = $('token').value.trim();
+    localStorage.setItem('gh_token', token);
+    $('token').value = '';
+    paintToken();
+  };
+  $('clearToken').onclick = function () {
+    token = '';
+    localStorage.removeItem('gh_token');
+    paintToken();
+  };
+
+  /* ---------- 分类选项 ---------- */
+  function loadCategories() {
+    var set = ['日记', '生活', '日常', '旅行', '美食', '读书', '随笔'];
+    fetch('/categories/', { cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.text() : ''; })
+      .then(function (html) {
+        var re = /href="\/categories\/([^"\/]+)\/"/g, m;
+        while ((m = re.exec(html))) {
+          try { set.push(decodeURIComponent(m[1])); } catch (e) {}
+        }
+      })
+      .catch(function () {})
+      .then(function () {
+        var seen = {}, html = '';
+        set.forEach(function (c) {
+          if (c && !seen[c]) { seen[c] = 1; html += '<option value="' + c.replace(/"/g, '&quot;') + '"></option>'; }
+        });
+        $('cats').innerHTML = html;
+        if (!$('category').value) $('category').value = '日记';
+      });
+  }
+
+  /* ---------- 内容块 ---------- */
+  function addText(value) {
+    blocks.push({ type: 'text', value: value || '' });
+    render();
+  }
+  function addImage() {
+    blocks.push({ type: 'image', file: null, dataUrl: '', caption: '', width: '', url: '' });
+    render();
+  }
+  function moveBlock(b, dir) {
+    var i = blocks.indexOf(b), j = i + dir;
+    if (i < 0 || j < 0 || j >= blocks.length) return;
+    blocks[i] = blocks[j]; blocks[j] = b;
+    render();
+  }
+  function removeBlock(b) {
+    var i = blocks.indexOf(b);
+    if (i >= 0) blocks.splice(i, 1);
+    render();
+  }
+
+  function render() {
+    var host = $('blocks');
+    host.innerHTML = '';
+
+    blocks.forEach(function (b) {
+      var box = document.createElement('div');
+      box.className = 'block';
+
+      var head = document.createElement('div');
+      head.className = 'block-head';
+      var tag = document.createElement('span');
+      tag.className = 'tag';
+      tag.textContent = b.type === 'text' ? '文字段' : '图片';
+      var ops = document.createElement('span');
+      ops.className = 'row';
+      ops.appendChild(mkBtn('↑', function () { moveBlock(b, -1); }, 'mini'));
+      ops.appendChild(mkBtn('↓', function () { moveBlock(b, 1); }, 'mini'));
+      ops.appendChild(mkBtn('删除', function () { removeBlock(b); }, 'mini ghost'));
+      head.appendChild(tag); head.appendChild(ops);
+      box.appendChild(head);
+
+      if (b.type === 'text') {
+        var ta = document.createElement('textarea');
+        ta.value = b.value;
+        ta.placeholder = '在这里写正文，空行分段。';
+        ta.oninput = function () { b.value = ta.value; };
+        box.appendChild(ta);
+      } else {
+        if (b.dataUrl) {
+          var img = document.createElement('img');
+          img.className = 'thumb';
+          img.src = b.dataUrl;
+          box.appendChild(img);
+        } else {
+          var fi = document.createElement('input');
+          fi.type = 'file';
+          fi.accept = 'image/*';
+          fi.onchange = function () {
+            var f = fi.files && fi.files[0];
+            if (!f) return;
+            if (f.size > 10 * 1024 * 1024) { alert('图片超过 10MB，请先压缩。'); return; }
+            b.file = f;
+            var rd = new FileReader();
+            rd.onload = function () { b.dataUrl = rd.result; render(); };
+            rd.readAsDataURL(f);
+          };
+          box.appendChild(fi);
+        }
+
+        var two = document.createElement('div');
+        two.className = 'two';
+
+        var d1 = document.createElement('div');
+        var l1 = document.createElement('label'); l1.textContent = '图片说明（可留空）';
+        var i1 = document.createElement('input'); i1.type = 'text'; i1.value = b.caption;
+        i1.placeholder = '公园门口的银杏';
+        i1.oninput = function () { b.caption = i1.value; };
+        d1.appendChild(l1); d1.appendChild(i1);
+
+        var d2 = document.createElement('div');
+        var l2 = document.createElement('label'); l2.textContent = '宽度（像素，留空=撑满）';
+        var i2 = document.createElement('input'); i2.type = 'number'; i2.value = b.width;
+        i2.placeholder = '700';
+        i2.oninput = function () { b.width = i2.value; };
+        d2.appendChild(l2); d2.appendChild(i2);
+
+        two.appendChild(d1); two.appendChild(d2);
+        box.appendChild(two);
+      }
+
+      host.appendChild(box);
+    });
+  }
+
+  function mkBtn(text, fn, cls) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = text;
+    if (cls) b.className = cls;
+    b.onclick = fn;
+    return b;
+  }
+
+  /* ---------- GitHub API ---------- */
+  function api(path, opts) {
+    opts = opts || {};
+    return fetch('https://api.github.com' + path, {
+      method: opts.method || 'GET',
+      headers: {
+        'Authorization': 'Bearer ' + token,
+        'Accept': 'application/vnd.github+json',
+        'Content-Type': 'application/json'
+      },
+      body: opts.body ? JSON.stringify(opts.body) : undefined
+    }).then(function (res) {
+      return res.text().then(function (t) {
+        var data = {};
+        try { data = t ? JSON.parse(t) : {}; } catch (e) {}
+        if (!res.ok) {
+          var msg = data.message || ('HTTP ' + res.status);
+          if (res.status === 401) msg = '令牌无效或已过期';
+          if (res.status === 404) msg = '找不到仓库，或令牌没有这个仓库的权限';
+          if (res.status === 403) msg = '令牌权限不足（需要 Contents: Read and write）';
+          throw new Error(msg);
+        }
+        return data;
+      });
+    });
+  }
+
+  function b64encodeUtf8(str) {
+    return btoa(unescape(encodeURIComponent(str)));
+  }
+
+  function extOf(type, name) {
+    var m = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif', 'image/webp': 'webp' };
+    if (m[type]) return m[type];
+    var e = (name || '').split('.').pop().toLowerCase();
+    return /^(jpg|jpeg|png|gif|webp)$/.test(e) ? e : 'jpg';
+  }
+
+  function bjNow() {
+    var d = new Date(Date.now() + 8 * 3600 * 1000);
+    var p = function (n) { return (n < 10 ? '0' : '') + n; };
+    return {
+      ymd: d.getUTCFullYear() + '-' + p(d.getUTCMonth() + 1) + '-' + p(d.getUTCDate()),
+      hms: p(d.getUTCHours()) + ':' + p(d.getUTCMinutes()) + ':00',
+      stamp: p(d.getUTCHours()) + p(d.getUTCMinutes()) + p(d.getUTCSeconds())
+    };
+  }
+
+  function setStatus(html, cls) {
+    var s = $('status');
+    s.innerHTML = html;
+    s.className = cls || '';
+  }
+
+  function nextSlug(ymd) {
+    return api('/repos/' + OWNER + '/' + REPO + '/contents/_posts?ref=' + BRANCH)
+      .then(function (list) {
+        var n = (list || []).filter(function (f) { return f.name.indexOf(ymd) === 0; }).length;
+        return n === 0 ? ymd : (ymd + '-' + (n + 1));
+      })
+      .catch(function () { return ymd + '-' + bjNow().stamp; });
+  }
+
+  /* ---------- 发布 ---------- */
+  $('publish').onclick = function () {
+    var title = ($('title').value || '').trim();
+    var cat = ($('category').value || '').trim() || '日记';
+
+    if (!token) { setStatus('先保存 GitHub 令牌。', 'err'); return; }
+    if (!title) { setStatus('标题不能为空。', 'err'); return; }
+
+    var hasText = blocks.some(function (b) { return b.type === 'text' && b.value.trim(); });
+    var hasImg = blocks.some(function (b) { return b.type === 'image'; });
+    if (!hasText && !hasImg) { setStatus('内容还是空的，先加点文字或图片。', 'err'); return; }
+    if (blocks.some(function (b) { return b.type === 'image' && !b.dataUrl; })) {
+      setStatus('有一张图片还没选好文件。', 'err'); return;
+    }
+
+    var now = bjNow();
+    var busy = 0;
+    var total = blocks.filter(function (b) { return b.type === 'image'; }).length;
+
+    $('publish').disabled = true;
+    setStatus('准备中…', '');
+
+    // 1. 逐张上传图片
+    var uploads = blocks.filter(function (b) { return b.type === 'image'; }).map(function (b, idx) {
+      return function () {
+        busy++;
+        setStatus('上传图片 ' + busy + '/' + total + '…', '');
+        var b64 = b.dataUrl.split(',')[1];
+        var name = now.ymd + '-' + now.stamp + '-' + (idx + 1) + '.' + extOf(b.file && b.file.type, b.file && b.file.name);
+        var path = 'assets/img/' + name;
+        return api('/repos/' + OWNER + '/' + REPO + '/contents/' + path, {
+          method: 'PUT',
+          body: { message: '上传图片 ' + name, content: b64, branch: BRANCH }
+        }).then(function () {
+          b.url = '/assets/img/' + name;
+        });
+      };
+    }).reduce(function (p, fn) { return p.then(fn); }, Promise.resolve());
+
+    uploads
+      .then(function () {
+        setStatus('生成文章…', '');
+        return nextSlug(now.ymd);
+      })
+      .then(function (slug) {
+        var body = '';
+        blocks.forEach(function (b) {
+          if (b.type === 'text') {
+            var t = b.value.trim();
+            if (t) body += t + '\n\n';
+          } else {
+            var cap = (b.caption || '').trim();
+            var w = (b.width || '').trim();
+            var attr = w ? '{: w="' + w + '" }' : '';
+            body += '![' + cap + '](' + b.url + ')' + attr + '\n';
+            if (cap) body += '_' + cap + '_\n';
+            body += '\n';
+          }
+        });
+
+        var content =
+          '---\n' +
+          'title: ' + JSON.stringify(title) + '\n' +
+          'date: ' + now.ymd + ' ' + now.hms + ' +0800\n' +
+          'categories: [' + JSON.stringify(cat) + ']\n' +
+          'slug: ' + slug + '\n' +
+          '---\n\n' +
+          body;
+
+        var file = '_posts/' + now.ymd + '-' + now.stamp + '.md';
+        return api('/repos/' + OWNER + '/' + REPO + '/contents/' + file, {
+          method: 'PUT',
+          body: { message: '发布：' + title, content: b64encodeUtf8(content), branch: BRANCH }
+        }).then(function () { return slug; });
+      })
+      .then(function (slug) {
+        setStatus('✅ 已提交，等 1～2 分钟后刷新博客。<br>' +
+          '<a href="' + SITE + '/posts/' + slug + '/" target="_blank" rel="noopener">' +
+          SITE + '/posts/' + slug + '/</a>', 'ok');
+        $('title').value = '';
+        blocks = [];
+        render();
+      })
+      .catch(function (e) {
+        setStatus('发布失败：' + e.message, 'err');
+      })
+      .then(function () { $('publish').disabled = false; });
+  };
+
+  /* ---------- 启动 ---------- */
+  paintToken();
+  loadCategories();
+  addText('');
+})();
+</script>
+</body>
+</html>
