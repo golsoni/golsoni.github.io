@@ -1,0 +1,63 @@
+---
+---
+
+@use 'main
+{%- if jekyll.environment == 'production' -%}
+  .bundle
+{%- endif -%}
+';
+
+/* ===== 慢慢懂得生活 · 自定义样式 ===== */
+
+/* 中文优先的字体栈 */
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI",
+               "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei",
+               "Source Han Sans SC", "Noto Sans CJK SC", sans-serif;
+}
+
+/* 正文：行距放宽、字号略增 */
+.post-content {
+  font-size: 1.0625rem;
+  line-height: 1.9;
+  letter-spacing: 0.01em;
+}
+
+.post-content > p,
+.post-content > ul,
+.post-content > ol {
+  margin-bottom: 1.15em;
+}
+
+.post-content h2 {
+  margin-top: 2.2em;
+  margin-bottom: 0.8em;
+}
+
+.post-content h3 {
+  margin-top: 1.8em;
+}
+
+/* 图片：圆角 + 轻阴影 */
+.post-content img {
+  border-radius: 12px;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.10);
+}
+
+/* 图片段落上下留白 */
+.post-content p:has(> img) {
+  margin: 1.7em 0;
+}
+
+@media (prefers-color-scheme: dark) {
+  .post-content img {
+    box-shadow: 0 6px 22px rgba(0, 0, 0, 0.55);
+  }
+}
+
+/* 引用块柔和一些 */
+.post-content blockquote {
+  border-left: 3px solid rgba(128, 128, 128, 0.35);
+  padding-left: 1em;
+  opacity: 0.9;
+}
