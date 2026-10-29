@@ -43,7 +43,66 @@ jobs:
             const hms = `${p(bj.getUTCHours())}:${p(bj.getUTCMinutes())}:00`;
 
             const title = (issue.title || '无标题').trim();
-            const body = (issue.body || '').trim();
+            let body = (issue.body || '').trim();
+
+            // ---- 分类：xxx ----
+            let categories = ['日记'];
+            body = body
+              .split('\n')
+              .filter((line) => {
+                const m = line.trim().match(/^分类[：:]\s*(.+)$/);
+                if (!m) return true;
+                categories = m[1].split(/[,，/、]/).map((s) => s.trim()).filter(Boolean);
+                return false;
+              })
+              .join('\n');
+
+            // ---- 图片：说明 / 宽度 ----
+            const src = body.split('\n');
+            const out = [];
+            for (let i = 0; i < src.length; i++) {
+              const m = src[i].match(/^!\[([^\]]*)\]\(\s*([^)\s]+)[^)]*\)\s*$/);
+              if (!m) {
+                out.push(src[i]);
+                continue;
+              }
+
+              let alt = m[1];
+              const url = m[2];
+              let caption = '';
+              let width = '';
+
+              let j = i + 1;
+              let scanned = 0;
+              while (j < src.length && scanned < 3) {
+                const t = src[j].trim();
+                if (t === '') {
+                  j++;
+                  scanned++;
+                  continue;
+                }
+                scanned++;
+                let mm;
+                if (!caption && (mm = t.match(/^(?:说明|图注)[：:]\s*(.+)$/))) {
+                  caption = mm[1].trim();
+                  j++;
+                  continue;
+                }
+                if (!width && (mm = t.match(/^(?:宽度|宽)[：:]\s*(\d{2,4})\s*$/))) {
+                  width = mm[1];
+                  j++;
+                  continue;
+                }
+                break;
+              }
+              i = j - 1;
+
+              if (alt === 'image' || alt === '') alt = caption;
+              const attr = width ? `{: w="${width}" }` : '';
+              out.push(`![${alt}](${url})${attr}`);
+              if (caption) out.push(`_${caption}_`);
+            }
+            body = out.join('\n').trim();
 
             const sameDay = fs.existsSync('_posts')
               ? fs.readdirSync('_posts').filter((f) => f.startsWith(ymd)).length
@@ -54,7 +113,7 @@ jobs:
               '---\n' +
               `title: ${JSON.stringify(title)}\n` +
               `date: ${ymd} ${hms} +0800\n` +
-              'categories: [日记]\n' +
+              `categories: [${categories.map((c) => JSON.stringify(c)).join(', ')}]\n` +
               `slug: ${slug}\n` +
               '---\n\n' +
               body + '\n';
