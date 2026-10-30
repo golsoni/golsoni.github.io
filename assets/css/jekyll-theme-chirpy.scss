@@ -160,3 +160,10 @@ body {
     box-shadow: 0 0 0 1px rgba(150, 150, 150, 0.45) !important;
   }
 }
+
+/* 缩略图右侧留白，和左边文字的内边距对称 */
+@media (min-width: 768px) {
+  #post-list .post-preview {
+    padding-right: 16px !important;
+  }
+}
