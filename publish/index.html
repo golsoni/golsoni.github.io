@@ -73,7 +73,7 @@
         <button id="clearCover" type="button" class="ghost">移除</button>
       </span>
     </div>
-    <p class="hint mini" style="margin:8px 0 0">有封面的文章，首页会显示成「左图右文」的卡片。建议用横图（1200×630 左右）。</p>
+    <p class="hint mini" style="margin:8px 0 0">有封面的文章，首页会显示成「左图右文」的卡片。横图竖图都行，竖图会自动裁取中间区域。</p>
     <div id="coverBox" style="margin-top:10px"></div>
   </section>
 
@@ -624,7 +624,7 @@
           'title: ' + JSON.stringify(title) + '\n' +
           'date: ' + now.ymd + ' ' + now.hms + ' +0800\n' +
           'categories: [' + JSON.stringify(cat) + ']\n' +
-          'slug: ' + slug + '\n';
+          'slug: ' + JSON.stringify(slug) + '\n';
 
         if (cover.url) {
           fm += 'image:\n' +
