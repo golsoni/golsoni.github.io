@@ -38,6 +38,11 @@
   .err{ color:#d33; font-size:13px; white-space:pre-wrap; }
   .mini{ font-size:12px; }
   .drop{ outline:3px dashed var(--brand); outline-offset:-6px; }
+  .gal{ display:grid; grid-template-columns:repeat(auto-fill, minmax(96px, 1fr)); gap:8px; margin-top:10px; }
+  .gal img{ width:100%; height:72px; object-fit:cover; border-radius:8px; cursor:pointer;
+            border:1px solid var(--line); }
+  .gal img:hover{ border-color:var(--brand); }
+  .gal p{ grid-column:1 / -1; color:var(--dim); font-size:12px; margin:4px 0; }
   .chk{ display:flex; align-items:center; gap:6px; font-size:13px; color:var(--dim); }
   .chk input{ width:auto; padding:0; }
 </style>
@@ -70,11 +75,13 @@
       <strong>封面图（可选）</strong>
       <span class="row">
         <button id="pickCover" type="button">选择封面</button>
+        <button id="pickOldCover" type="button">用以前的封面</button>
         <button id="clearCover" type="button" class="ghost">移除</button>
       </span>
     </div>
     <p class="hint mini" style="margin:8px 0 0">有封面的文章，首页会显示成「左图右文」的卡片。横图竖图都行，竖图会自动裁取中间区域。</p>
     <div id="coverBox" style="margin-top:10px"></div>
+    <div id="coverGallery" class="gal" style="display:none"></div>
   </section>
 
   <section class="card">
@@ -314,6 +321,47 @@
   $('clearCover').onclick = function () {
     cover = { file: null, dataUrl: '', loading: false, note: '', err: '', url: '' };
     renderCover();
+  };
+
+  /* 复用以前发过的封面 */
+  $('pickOldCover').onclick = function () {
+    var box = $('coverGallery');
+    if (box.style.display === 'block') { box.style.display = 'none'; return; }
+    box.style.display = 'block';
+    box.innerHTML = '<p>加载中…</p>';
+    if (!token) { box.innerHTML = '<p>先保存 GitHub 令牌，才能读取以前用过的封面。</p>'; return; }
+
+    api('/repos/' + OWNER + '/' + REPO + '/contents/assets/img?ref=' + BRANCH)
+      .then(function (items) {
+        var list = (items || []).filter(function (f) {
+          return f.type === 'file' && /-cover\.(jpe?g|png|webp)$/i.test(f.name);
+        });
+        list.sort(function (a, b) { return a.name < b.name ? 1 : -1; });
+        if (!list.length) { box.innerHTML = '<p>还没有用过的封面。</p>'; return; }
+
+        box.innerHTML = '';
+        list.forEach(function (f) {
+          var img = document.createElement('img');
+          img.src = '/assets/img/' + f.name;
+          img.title = f.name;
+          img.onclick = function () {
+            cover = {
+              file: null,
+              dataUrl: '/assets/img/' + f.name,
+              loading: false,
+              note: '使用已有封面：' + f.name,
+              err: '',
+              url: '/assets/img/' + f.name
+            };
+            renderCover();
+            box.style.display = 'none';
+          };
+          box.appendChild(img);
+        });
+      })
+      .catch(function (e) {
+        box.innerHTML = '<p>读取失败：' + e.message + '</p>';
+      });
   };
 
   /* ---------- 内容块 ---------- */
