@@ -56,7 +56,7 @@
       <a href="/publish/" class="mini">退出编辑，写新文章 →</a>
     </div>
   </div>
-  <p class="hint">这个页面直接用你的 GitHub 令牌把文章提交到仓库，不经过任何第三方。令牌只保存在本机浏览器里。<b style="color:#0a6cff"> v10</b></p>
+  <p class="hint">这个页面直接用你的 GitHub 令牌把文章提交到仓库，不经过任何第三方。令牌只保存在本机浏览器里。<b style="color:#0a6cff"> v11</b></p>
 
   <section class="card">
     <label>GitHub 令牌（只保存在这台浏览器）</label>
@@ -573,6 +573,7 @@
     opts = opts || {};
     return fetch('https://api.github.com' + path, {
       method: opts.method || 'GET',
+      cache: 'no-store',
       headers: {
         'Authorization': 'Bearer ' + token,
         'Accept': 'application/vnd.github+json',
@@ -643,6 +644,7 @@
 
   function fetchRawText(path) {
     return fetch('https://api.github.com' + path, {
+      cache: 'no-store',
       headers: { 'Authorization': 'Bearer ' + token, 'Accept': 'application/vnd.github.raw' }
     }).then(function (r) { return r.ok ? r.text() : ''; });
   }
