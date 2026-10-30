@@ -140,7 +140,7 @@
   }
 
   function parseMeta(text) {
-    var out = { title: '', categories: '' };
+    var out = { title: '', categories: '', slug: '' };
     var m = text.match(/^---\r?\n([\s\S]*?)\r?\n---/);
     if (!m) return out;
     var fm = m[1];
@@ -157,6 +157,9 @@
     }
     var c = fm.match(/^categories:\s*(.+)$/m);
     if (c) out.categories = c[1].replace(/^\[|\]$/g, '').replace(/"/g, '').replace(/'/g, '').trim();
+
+    var s = fm.match(/^slug:\s*(.+)$/m);
+    if (s) out.slug = s[1].trim().replace(/^['"]|['"]$/g, '');
 
     return out;
   }
@@ -188,6 +191,7 @@
                 sha: f.sha,
                 title: meta.title || f.name.replace(/\.md$/, ''),
                 categories: meta.categories,
+                slug: meta.slug,
                 date: humanDate(f.name)
               };
             })
@@ -242,14 +246,16 @@
       edit.className = 'edit';
       edit.textContent = '编辑';
       edit.onclick = function () {
-        window.open(SITE + '/publish/?edit=' + encodeURIComponent(p.name), '_blank');
+        window.open(SITE + '/publish/?v=6&edit=' + encodeURIComponent(p.name), '_blank');
       };
       ops.appendChild(edit);
 
       var open = document.createElement('button');
       open.type = 'button';
       open.textContent = '打开';
-      open.onclick = function () { window.open(SITE + '/posts/' + slugOf(p.name) + '/', '_blank'); };
+      open.onclick = function () {
+        window.open(SITE + '/posts/' + encodeURIComponent(p.slug || slugOf(p.name)) + '/', '_blank');
+      };
       ops.appendChild(open);
 
       var del = document.createElement('button');
