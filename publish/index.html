@@ -56,7 +56,7 @@
       <a href="/publish/" class="mini">退出编辑，写新文章 →</a>
     </div>
   </div>
-  <p class="hint">这个页面直接用你的 GitHub 令牌把文章提交到仓库，不经过任何第三方。令牌只保存在本机浏览器里。<b style="color:#0a6cff"> v9</b></p>
+  <p class="hint">这个页面直接用你的 GitHub 令牌把文章提交到仓库，不经过任何第三方。令牌只保存在本机浏览器里。<b style="color:#0a6cff"> v10</b></p>
 
   <section class="card">
     <label>GitHub 令牌（只保存在这台浏览器）</label>
@@ -767,7 +767,7 @@
 
         var p = parsePost(text);
 
-        editState = { path: meta.path, sha: meta.sha, date: p.date, slug: p.slug };
+        editState = { path: meta.path, sha: meta.sha, date: p.date, slug: p.slug, name: name };
 
         $('title').value = p.title;
         if (p.cats.length) $('category').value = p.cats[0];
@@ -850,7 +850,7 @@
     chain
       .then(function () {
         if (editState) {
-          if (editState.sha) return editState.slug || '';
+          if (!editState.path) editState.path = '_posts/' + editState.name;
           return api('/repos/' + OWNER + '/' + REPO + '/contents/' + editState.path + '?ref=' + BRANCH)
             .then(function (d) { if (d && d.sha) editState.sha = d.sha; return editState.slug || ''; })
             .catch(function () { return editState.slug || ''; });
