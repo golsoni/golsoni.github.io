@@ -128,3 +128,28 @@ body {
 #post-list .post-preview:hover > .col-md-5 img {
   filter: blur(0);
 }
+
+/* ===== 统一卡片观感：摘要最多两行 + 缩略图垂直居中 ===== */
+@media (min-width: 768px) {
+  #post-list .post-preview > .col-md-5 {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    align-self: stretch !important;
+  }
+  #post-list .post-preview > .col-md-7 {
+    min-height: 148px;
+    display: flex;
+  }
+}
+
+/* 摘要最多两行，超出显示省略号 */
+#post-list .post-preview .card-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+#post-list .post-preview .card-text p {
+  margin: 0;
+}
