@@ -139,3 +139,24 @@ body {
 #post-list .post-preview > .col-md-5 img:hover {
   filter: blur(0);
 }
+
+/* 修复：主题在图片外多包了一层 .preview-img，把高度裁掉了 */
+@media (min-width: 768px) {
+  #post-list .post-preview > .col-md-5,
+  #post-list .post-preview > .col-md-5 .preview-img {
+    width: 96px !important;
+    max-width: 96px !important;
+    height: 96px !important;
+    max-height: 96px !important;
+    min-height: 96px !important;
+    overflow: visible !important;
+    display: block !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  /* 顺便给个细轮廓，让方形边界更清楚 */
+  #post-list .post-preview > .col-md-5 img {
+    box-shadow: 0 0 0 1px rgba(150, 150, 150, 0.45) !important;
+  }
+}
