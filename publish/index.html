@@ -56,7 +56,7 @@
       <a href="/publish/" class="mini">退出编辑，写新文章 →</a>
     </div>
   </div>
-  <p class="hint">这个页面直接用你的 GitHub 令牌把文章提交到仓库，不经过任何第三方。令牌只保存在本机浏览器里。<b style="color:#0a6cff"> v8</b></p>
+  <p class="hint">这个页面直接用你的 GitHub 令牌把文章提交到仓库，不经过任何第三方。令牌只保存在本机浏览器里。<b style="color:#0a6cff"> v9</b></p>
 
   <section class="card">
     <label>GitHub 令牌（只保存在这台浏览器）</label>
@@ -696,7 +696,10 @@
 
     for (var i = 0; i < lines.length; i++) {
       var line = lines[i];
-      var m = line.match(/^!\[([^\]]*)\]\(\s*([^)\s]+)[^)]*\)\s*(?:\{:\s*w="(\d+)"\s*\})?\s*$/);
+      var t = line.trim();
+
+      // ① Markdown 图片：![说明](url){: w="600" }
+      var m = t.match(/^!\[([^\]]*)\]\(\s*([^)\s]+)[^)]*\)\s*(?:\{:\s*w="(\d+)"\s*\})?$/);
       if (m) {
         flush();
         var b = {
@@ -707,9 +710,27 @@
         var nxt = (lines[i + 1] || '').trim().match(/^_(.+)_$/);
         if (nxt) { b.caption = nxt[1]; i++; }
         out.push(b);
-      } else {
-        buf.push(line);
+        continue;
       }
+
+      // ② HTML 图片：<img src="..." alt="..." width="..." />
+      if (/^<img\b/i.test(t) && /src\s*=/i.test(t)) {
+        var srcM = t.match(/src\s*=\s*"([^"]+)"/i) || t.match(/src\s*=\s*'([^']+)'/i);
+        if (srcM) {
+          flush();
+          var altM = t.match(/alt\s*=\s*"([^"]*)"/i) || t.match(/alt\s*=\s*'([^']*)'/i);
+          var wM = t.match(/width\s*=\s*"(\d+)"/i) || t.match(/width\s*=\s*'(\d+)'/i);
+          out.push({
+            type: 'image', file: null, url: srcM[1], dataUrl: srcM[1],
+            caption: (altM && altM[1] && altM[1] !== 'Image') ? altM[1] : '',
+            width: '',
+            loading: false, note: '已有图片（HTML）', err: ''
+          });
+          continue;
+        }
+      }
+
+      buf.push(line);
     }
     flush();
     return out;
