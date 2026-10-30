@@ -246,7 +246,7 @@
       edit.className = 'edit';
       edit.textContent = '编辑';
       edit.onclick = function () {
-        window.open(SITE + '/publish/?v=6&edit=' + encodeURIComponent(p.name), '_blank');
+        window.open(SITE + '/publish/?t=' + Date.now() + '&edit=' + encodeURIComponent(p.name), '_blank');
       };
       ops.appendChild(edit);
 
