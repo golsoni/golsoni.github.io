@@ -134,3 +134,16 @@ body {
 #post-list .post-preview:hover > .col-md-5 img {
   filter: blur(0);
 }
+
+/* ===== 缩略图改正方形 ===== */
+@media (min-width: 768px) {
+  #post-list .post-preview {
+    grid-template-columns: minmax(0, 1fr) 124px !important;
+  }
+  #post-list .post-preview > .col-md-5 img {
+    width: 96px !important;
+    height: 96px !important;
+    border-radius: 10px !important;
+    margin-left: auto !important;
+  }
+}
