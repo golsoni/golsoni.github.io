@@ -135,15 +135,34 @@ body {
   filter: blur(0);
 }
 
-/* ===== 缩略图改正方形 ===== */
+/* ===== 缩略图：强制正方形 + 轻微模糊 ===== */
 @media (min-width: 768px) {
   #post-list .post-preview {
-    grid-template-columns: minmax(0, 1fr) 124px !important;
+    grid-template-columns: minmax(0, 1fr) 96px !important;
+    column-gap: 14px !important;
+  }
+  #post-list .post-preview > .col-md-5 {
+    padding: 0 !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    overflow: visible !important;
   }
   #post-list .post-preview > .col-md-5 img {
     width: 96px !important;
     height: 96px !important;
+    min-width: 96px !important;
+    max-width: 96px !important;
+    min-height: 96px !important;
+    max-height: 96px !important;
+    object-fit: cover !important;
+    object-position: center !important;
     border-radius: 10px !important;
-    margin-left: auto !important;
+    margin: 0 !important;
   }
+}
+
+/* 模糊减半：4px → 2px */
+#post-list .post-preview > .col-md-5 img {
+  filter: blur(2px) !important;
 }
