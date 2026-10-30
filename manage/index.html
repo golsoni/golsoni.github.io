@@ -111,6 +111,7 @@
   function api(path, method, body) {
     return fetch('https://api.github.com' + path, {
       method: method || 'GET',
+      cache: 'no-store',
       headers: {
         'Authorization': 'Bearer ' + token,
         'Accept': 'application/vnd.github+json',
@@ -135,6 +136,7 @@
 
   function rawFile(path) {
     return fetch('https://api.github.com' + path, {
+      cache: 'no-store',
       headers: { 'Authorization': 'Bearer ' + token, 'Accept': 'application/vnd.github.raw' }
     }).then(function (r) { return r.ok ? r.text() : ''; });
   }
