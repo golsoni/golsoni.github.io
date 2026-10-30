@@ -154,26 +154,50 @@
 
   /* ---------- 分类选项 ---------- */
   function loadCategories() {
-    var list = ['日记', '生活', '日常', '旅行', '美食', '读书', '随笔'];
-    fetch('/categories/', { cache: 'no-store' })
-      .then(function (r) { return r.ok ? r.text() : ''; })
-      .then(function (html) {
-        var re = /href="\/categories\/([^"\/]+)\/"/g, m;
-        while ((m = re.exec(html))) {
-          try { list.push(decodeURIComponent(m[1])); } catch (e) {}
+    var fallback = ['日记', '生活', '日常', '旅行', '美食', '读书', '随笔'];
+
+    function paint(items, showCount) {
+      var seen = {}, html = '';
+      items.forEach(function (it) {
+        var name = it.name;
+        if (!name || seen[name]) return;
+        seen[name] = 1;
+        html += '<option value="' + String(name).replace(/"/g, '&quot;') + '">' +
+          (showCount && it.count ? String(name).replace(/</g, '&lt;') + '（' + it.count + '）' : '') +
+          '</option>';
+      });
+      $('cats').innerHTML = html;
+      if (!$('category').value) {
+        $('category').value = (items[0] && items[0].name) || '日记';
+      }
+    }
+
+    function asFallback(names) {
+      var arr = names.map(function (c) { return { name: c, count: 0 }; });
+      return arr.concat(fallback.map(function (c) { return { name: c, count: 0 }; }));
+    }
+
+    fetch('/assets/data/categories.json', { cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .catch(function () { return null; })
+      .then(function (arr) {
+        if (arr && arr.length) {
+          arr.sort(function (a, b) {
+            return (b.count || 0) - (a.count || 0) || (a.name > b.name ? 1 : -1);
+          });
+          paint(arr.concat(fallback.map(function (c) { return { name: c, count: 0 }; })), true);
+          return;
         }
-      })
-      .catch(function () {})
-      .then(function () {
-        var seen = {}, html = '';
-        list.forEach(function (c) {
-          if (c && !seen[c]) {
-            seen[c] = 1;
-            html += '<option value="' + String(c).replace(/"/g, '&quot;') + '"></option>';
-          }
-        });
-        $('cats').innerHTML = html;
-        if (!$('category').value) $('category').value = '日记';
+        return fetch('/categories/', { cache: 'no-store' })
+          .then(function (r) { return r.ok ? r.text() : ''; })
+          .then(function (html) {
+            var names = [], re = /href="\/categories\/([^"\/]+)\/"/g, m;
+            while ((m = re.exec(html))) {
+              try { names.push(decodeURIComponent(m[1])); } catch (e) {}
+            }
+            paint(asFallback(names), false);
+          })
+          .catch(function () { paint(asFallback([]), false); });
       });
   }
 
