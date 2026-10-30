@@ -50,6 +50,12 @@
 <body>
 <div class="wrap">
   <h1>发布</h1>
+  <div id="editBanner" class="card" style="display:none">
+    <div class="row" style="justify-content:space-between">
+      <span id="editInfo" class="mini"></span>
+      <a href="/publish/" class="mini">退出编辑，写新文章 →</a>
+    </div>
+  </div>
   <p class="hint">这个页面直接用你的 GitHub 令牌把文章提交到仓库，不经过任何第三方。令牌只保存在本机浏览器里。</p>
 
   <section class="card">
@@ -121,6 +127,7 @@
   var $ = function (id) { return document.getElementById(id); };
   var token = localStorage.getItem('gh_token') || '';
   var blocks = [];
+  var editState = null;
   var cover = { file: null, dataUrl: '', loading: false, note: '', err: '', url: '' };
 
   /* ---------- 令牌 ---------- */
@@ -618,6 +625,112 @@
       .catch(function () { return ymd + '-' + bjNow().stamp; });
   }
 
+  /* ---------- 编辑已有文章 ---------- */
+  function decodeB64(b64) {
+    try { return decodeURIComponent(escape(atob(String(b64).replace(/\s/g, '')))); }
+    catch (e) { try { return atob(b64); } catch (e2) { return ''; } }
+  }
+
+  function unquote(v) {
+    if (!v) return '';
+    v = String(v).trim();
+    if (v.charAt(0) === '"') {
+      try { return JSON.parse(v); } catch (e) { return v.replace(/^"|"$/g, ''); }
+    }
+    return v.replace(/^\[|\]$/g, '').replace(/^['"]|['"]$/g, '');
+  }
+
+  function parsePost(text) {
+    var m = text.match(/^---\r?\n([\s\S]*?)\r?\n---[ \t]*\r?\n?([\s\S]*)$/);
+    var fm = m ? m[1] : '';
+    var body = m ? m[2] : text;
+
+    function field(key) {
+      var mm = fm.match(new RegExp('^' + key + ':[ \\t]*(.*)$', 'm'));
+      return mm ? mm[1] : '';
+    }
+
+    var title = unquote(field('title'));
+    var catsRaw = unquote(field('categories'));
+    var cats = catsRaw ? catsRaw.split(/[,，]/).map(function (s) { return s.trim(); }).filter(Boolean) : [];
+    var date = field('date').trim();
+    var slug = unquote(field('slug'));
+
+    var coverPath = '';
+    var im = fm.match(/image:[ \t]*\r?\n[ \t]*path:[ \t]*(\S+)/);
+    if (im) coverPath = unquote(im[1].trim());
+    if (!coverPath) {
+      var one = fm.match(/^image:[ \t]*(\/\S+)/m);
+      if (one) coverPath = unquote(one[1].trim());
+    }
+
+    return { title: title, cats: cats, date: date, slug: slug, cover: coverPath, body: body };
+  }
+
+  function parseBlocks(body) {
+    var lines = body.split('\n');
+    var out = [];
+    var buf = [];
+
+    function flush() {
+      var t = buf.join('\n').trim();
+      if (t) out.push({ type: 'text', value: t });
+      buf = [];
+    }
+
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      var m = line.match(/^!\[([^\]]*)\]\(\s*([^)\s]+)[^)]*\)\s*(?:\{:\s*w="(\d+)"\s*\})?\s*$/);
+      if (m) {
+        flush();
+        var b = {
+          type: 'image', file: null, url: m[2], dataUrl: m[2],
+          caption: m[1] || '', width: m[3] || '',
+          loading: false, note: '已有图片', err: ''
+        };
+        var nxt = (lines[i + 1] || '').trim().match(/^_(.+)_$/);
+        if (nxt) { b.caption = nxt[1]; i++; }
+        out.push(b);
+      } else {
+        buf.push(line);
+      }
+    }
+    flush();
+    return out;
+  }
+
+  function loadForEdit(name) {
+    setStatus('正在读取文章…');
+    api('/repos/' + OWNER + '/' + REPO + '/contents/_posts/' + encodeURIComponent(name) + '?ref=' + BRANCH)
+      .then(function (data) {
+        var text = decodeB64(data.content || '');
+        var p = parsePost(text);
+
+        editState = { path: data.path, sha: data.sha, date: p.date, slug: p.slug };
+
+        $('title').value = p.title;
+        if (p.cats.length) $('category').value = p.cats[0];
+
+        blocks = parseBlocks(p.body);
+        if (!blocks.length) blocks.push({ type: 'text', value: '' });
+
+        cover = p.cover
+          ? { file: null, dataUrl: p.cover, url: p.cover, loading: false, note: '当前封面', err: '' }
+          : { file: null, dataUrl: '', url: '', loading: false, note: '', err: '' };
+
+        render();
+        renderCover();
+
+        $('editBanner').style.display = 'block';
+        $('editInfo').textContent = '正在编辑：' + name;
+        $('publish').textContent = '保存修改';
+        setStatus('已载入，改完点「保存修改」', 'ok');
+      })
+      .catch(function (e) {
+        setStatus('读取文章失败：' + e.message, 'err');
+      });
+  }
+
   /* ---------- 发布 ---------- */
   $('publish').onclick = function () {
     var title = ($('title').value || '').trim();
@@ -630,12 +743,12 @@
     var imgs = blocks.filter(function (b) { return b.type === 'image'; });
     if (!hasText && imgs.length === 0) { setStatus('内容还是空的，先加点文字或图片。', 'err'); return; }
     if (imgs.some(function (b) { return b.err; })) { setStatus('有一张图片读不出来，先删掉或换一张。', 'err'); return; }
-    if (imgs.some(function (b) { return !b.dataUrl; })) { setStatus('有图片还在处理，稍等两秒再点发布。', 'err'); return; }
+    if (imgs.some(function (b) { return b.file && !b.dataUrl; })) { setStatus('有图片还在处理，稍等两秒再点发布。', 'err'); return; }
     if (cover.loading) { setStatus('封面还在处理，稍等一下。', 'err'); return; }
     if (cover.err) { setStatus('封面图读不出来，先移除或换一张。', 'err'); return; }
 
     var now = bjNow();
-    var total = imgs.length + (cover.file ? 1 : 0);
+    var total = imgs.filter(function (b) { return b.file; }).length + (cover.file ? 1 : 0);
     var busy = 0;
 
     $('publish').disabled = true;
@@ -643,7 +756,7 @@
 
     var chain = Promise.resolve();
 
-    imgs.forEach(function (b, idx) {
+    imgs.filter(function (b) { return b.file; }).forEach(function (b, idx) {
       chain = chain.then(function () {
         busy++;
         setStatus('上传图片 ' + busy + '/' + total + '…', '');
@@ -673,6 +786,7 @@
 
     chain
       .then(function () {
+        if (editState) return editState.slug || '';
         setStatus('生成文章…', '');
         return nextSlug(now.ymd);
       })
@@ -694,9 +808,10 @@
 
         var fm = '---\n' +
           'title: ' + JSON.stringify(title) + '\n' +
-          'date: ' + now.ymd + ' ' + now.hms + ' +0800\n' +
-          'categories: [' + JSON.stringify(cat) + ']\n' +
-          'slug: ' + JSON.stringify(slug) + '\n';
+          'date: ' + ((editState && editState.date) ? editState.date : (now.ymd + ' ' + now.hms + ' +0800')) + '\n' +
+          'categories: [' + JSON.stringify(cat) + ']\n';
+
+        if (slug) fm += 'slug: ' + JSON.stringify(slug) + '\n';
 
         if (cover.url) {
           fm += 'image:\n' +
@@ -706,21 +821,34 @@
 
         var content = fm + '---\n\n' + body;
 
-        return api('/repos/' + OWNER + '/' + REPO + '/contents/_posts/' + now.ymd + '-' + now.stamp + '.md', {
+        var path = editState ? editState.path : ('_posts/' + now.ymd + '-' + now.stamp + '.md');
+        var payload = {
+          message: (editState ? '修改：' : '发布：') + title,
+          content: b64encodeUtf8(content),
+          branch: BRANCH
+        };
+        if (editState) payload.sha = editState.sha;
+
+        return api('/repos/' + OWNER + '/' + REPO + '/contents/' + path, {
           method: 'PUT',
-          body: { message: '发布：' + title, content: b64encodeUtf8(content), branch: BRANCH }
-        }).then(function () { return slug; });
+          body: payload
+        }).then(function (res) {
+          if (editState && res && res.content) editState.sha = res.content.sha;
+          return slug;
+        });
       })
       .then(function (slug) {
-        setStatus('✅ 已提交，等 1～2 分钟后刷新博客。<br>' +
-          '<a href="' + SITE + '/posts/' + slug + '/" target="_blank" rel="noopener">' +
-          SITE + '/posts/' + slug + '/</a>', 'ok');
-        $('title').value = '';
-        blocks = [];
-        cover = { file: null, dataUrl: '', loading: false, note: '', err: '', url: '' };
-        render();
-        renderCover();
-        addText('');
+        var link = slug ? ('<br><a href="' + SITE + '/posts/' + slug + '/" target="_blank" rel="noopener">' +
+          SITE + '/posts/' + slug + '/</a>') : '';
+        setStatus('✅ ' + (editState ? '已保存' : '已提交') + '，等 1～2 分钟后刷新博客。' + link, 'ok');
+        if (!editState) {
+          $('title').value = '';
+          blocks = [];
+          cover = { file: null, dataUrl: '', loading: false, note: '', err: '', url: '' };
+          render();
+          renderCover();
+          addText('');
+        }
       })
       .catch(function (e) {
         setStatus('发布失败：' + e.message, 'err');
@@ -732,7 +860,11 @@
   paintToken();
   loadCategories();
   renderCover();
-  addText('');
+
+  var editFile = null;
+  try { editFile = new URLSearchParams(location.search).get('edit'); } catch (e) {}
+  if (editFile) loadForEdit(editFile);
+  else addText('');
 })();
 </script>
 </body>
