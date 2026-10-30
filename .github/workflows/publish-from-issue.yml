@@ -114,7 +114,7 @@ jobs:
               `title: ${JSON.stringify(title)}\n` +
               `date: ${ymd} ${hms} +0800\n` +
               `categories: [${categories.map((c) => JSON.stringify(c)).join(', ')}]\n` +
-              `slug: ${slug}\n` +
+              `slug: ${JSON.stringify(slug)}\n` +
               '---\n\n' +
               body + '\n';
 
