@@ -177,3 +177,50 @@ body {
     height: 90px !important;
   }
 }
+
+/* ===== 首页卡片：细条缩略图 + 垂直居中 + 统一高度 ===== */
+@media (min-width: 768px) {
+  #post-list .post-preview > .col-md-5 {
+    flex: 0 0 200px !important;
+    width: 200px !important;
+    max-width: 200px !important;
+    align-self: stretch !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: flex-end !important;
+    padding: 12px 12px 12px 0;
+    overflow: visible !important;
+  }
+  #post-list .post-preview > .col-md-5 img {
+    width: 188px !important;
+    height: 56px !important;
+    object-fit: cover;
+    object-position: center;
+    border-radius: 6px;
+  }
+  #post-list .post-preview > .col-md-7 {
+    flex: 1 1 auto !important;
+    width: auto !important;
+    max-width: none !important;
+    display: flex;
+    min-height: 120px;
+  }
+}
+
+/* 摘要最多两行，卡片高度更接近 */
+#post-list .post-preview .card-text {
+  display: -webkit-box !important;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+#post-list .post-preview .card-text p {
+  margin: 0;
+}
+
+/* 手机：整宽细条 */
+@media (max-width: 767.98px) {
+  #post-list .post-preview > .col-md-5 img {
+    height: 90px !important;
+  }
+}
