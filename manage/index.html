@@ -26,6 +26,7 @@
   button.primary{ background:var(--brand); border-color:var(--brand); color:#fff; font-weight:600; }
   button.del{ color:var(--danger); border-color:var(--danger); }
   button.del:hover{ background:var(--danger); color:#fff; }
+  button.edit{ color:var(--brand); border-color:var(--brand); }
   .row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
   .ok{ color:#1a9c53; font-size:13px; }
   .err{ color:var(--danger); font-size:13px; white-space:pre-wrap; }
@@ -235,6 +236,15 @@
 
       var ops = document.createElement('span');
       ops.className = 'row';
+
+      var edit = document.createElement('button');
+      edit.type = 'button';
+      edit.className = 'edit';
+      edit.textContent = '编辑';
+      edit.onclick = function () {
+        window.open(SITE + '/publish/?edit=' + encodeURIComponent(p.name), '_blank');
+      };
+      ops.appendChild(edit);
 
       var open = document.createElement('button');
       open.type = 'button';
