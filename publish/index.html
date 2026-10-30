@@ -56,7 +56,7 @@
       <a href="/publish/" class="mini">退出编辑，写新文章 →</a>
     </div>
   </div>
-  <p class="hint">这个页面直接用你的 GitHub 令牌把文章提交到仓库，不经过任何第三方。令牌只保存在本机浏览器里。<b style="color:#0a6cff"> v7</b></p>
+  <p class="hint">这个页面直接用你的 GitHub 令牌把文章提交到仓库，不经过任何第三方。令牌只保存在本机浏览器里。<b style="color:#0a6cff"> v8</b></p>
 
   <section class="card">
     <label>GitHub 令牌（只保存在这台浏览器）</label>
@@ -715,27 +715,38 @@
     return out;
   }
 
+  function fetchRawUrl(name) {
+    return fetch('https://raw.githubusercontent.com/' + OWNER + '/' + REPO + '/' + BRANCH +
+      '/_posts/' + encodeURIComponent(name) + '?t=' + Date.now(), { cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.text() : ''; })
+      .catch(function () { return ''; });
+  }
+
   function loadForEdit(name) {
     setStatus('正在读取文章…');
-    api('/repos/' + OWNER + '/' + REPO + '/contents/_posts/' + encodeURIComponent(name) + '?ref=' + BRANCH)
-      .then(function (data) {
-        var base = decodeB64(data.content || '');
-        if (base && base.trim()) {
-          return { text: base, path: data.path, sha: data.sha };
-        }
-        return fetchRawText('/repos/' + OWNER + '/' + REPO + '/contents/' + data.path + '?ref=' + BRANCH)
-          .then(function (txt) {
-            return { text: txt || '', path: data.path, sha: data.sha };
-          });
+
+    var metaP = api('/repos/' + OWNER + '/' + REPO + '/contents/_posts/' + encodeURIComponent(name) + '?ref=' + BRANCH)
+      .then(function (d) {
+        return { path: d.path, sha: d.sha, content: decodeB64(d.content || '') };
       })
-      .then(function (res) {
-        if (!res.text || !res.text.trim()) {
-          setStatus('读取到的内容是空的，暂时没法编辑：' + name, 'err');
+      .catch(function () {
+        return { path: '_posts/' + name, sha: '', content: '' };
+      });
+
+    Promise.all([metaP, fetchRawUrl(name)])
+      .then(function (arr) {
+        var meta = arr[0];
+        var raw = arr[1];
+        var text = (raw && raw.trim()) ? raw : (meta.content || '');
+
+        if (!text.trim()) {
+          setStatus('读取到的内容是空的（raw 和 API 都为空），文件名：' + name, 'err');
           return;
         }
-        var p = parsePost(res.text);
 
-        editState = { path: res.path, sha: res.sha, date: p.date, slug: p.slug };
+        var p = parsePost(text);
+
+        editState = { path: meta.path, sha: meta.sha, date: p.date, slug: p.slug };
 
         $('title').value = p.title;
         if (p.cats.length) $('category').value = p.cats[0];
@@ -755,7 +766,7 @@
         $('editBanner').style.display = 'block';
         $('editInfo').textContent = '正在编辑：' + name;
         $('publish').textContent = '保存修改';
-        setStatus('已载入（' + res.text.length + ' 字符），改完点「保存修改」', 'ok');
+        setStatus('已载入（' + text.length + ' 字符），改完点「保存修改」', 'ok');
       })
       .catch(function (e) {
         setStatus('读取文章失败：' + e.message, 'err');
@@ -817,7 +828,12 @@
 
     chain
       .then(function () {
-        if (editState) return editState.slug || '';
+        if (editState) {
+          if (editState.sha) return editState.slug || '';
+          return api('/repos/' + OWNER + '/' + REPO + '/contents/' + editState.path + '?ref=' + BRANCH)
+            .then(function (d) { if (d && d.sha) editState.sha = d.sha; return editState.slug || ''; })
+            .catch(function () { return editState.slug || ''; });
+        }
         setStatus('生成文章…', '');
         return nextSlug(now.ymd);
       })
