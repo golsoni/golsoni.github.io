@@ -88,3 +88,43 @@ body {
     height: 220px;
   }
 }
+
+/* ===== 首页卡片缩略图：变小 + 轻微模糊 ===== */
+@media (min-width: 768px) {
+  #post-list .post-preview > .col-md-5 {
+    flex: 0 0 148px !important;
+    width: 148px !important;
+    max-width: 148px !important;
+    align-self: center;
+    padding: 12px 12px 12px 0;
+    overflow: visible;
+  }
+  #post-list .post-preview > .col-md-5 img {
+    width: 136px !important;
+    height: 96px !important;
+    object-fit: cover;
+    object-position: center;
+    border-radius: 8px;
+  }
+  #post-list .post-preview > .col-md-7 {
+    flex: 1 1 auto !important;
+    width: auto !important;
+    max-width: none !important;
+  }
+}
+
+/* 手机：整宽横幅，但压矮 */
+@media (max-width: 767.98px) {
+  #post-list .post-preview > .col-md-5 img {
+    height: 150px !important;
+  }
+}
+
+/* 轻微模糊：不让人一眼看穿内容 */
+#post-list .post-preview > .col-md-5 img {
+  filter: blur(5px);
+  transition: filter .25s ease;
+}
+#post-list .post-preview:hover > .col-md-5 img {
+  filter: blur(0);
+}
